@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 
 #
 # Markdown -- A text-to-HTML conversion tool for web writers
@@ -15,13 +15,12 @@ use warnings;
 
 use Digest::MD5 qw(md5_hex);
 use vars qw($VERSION);
-$VERSION = '1.0.2b4';
-# Mon 19 Sep 2005
+$VERSION = '1.0.2b7';
+# Tue 29 Aug 2006
 
 ## Disabled; causes problems under Perl 5.6.1:
 # use utf8;
 # binmode( STDOUT, ":utf8" );  # c.f.: http://acis.openlib.org/dev/perl-unicode-struggle.html
-
 
 #
 # Global default settings:
@@ -328,12 +327,6 @@ sub _HashHTMLBlocks {
 		  )
 		}x;
 
-	my $up_to_possible_tag_block = qr{
-			(.*?)
-			^[ ]{0,3}			# 0-3 spaces
-			(?=<)				# lookahead assertion for '<'
-		}msx;
-
 	my $tag_attrs = qr{
 						(?:				# Match one attr name/value pair
 							\s+				# There needs to be at least some whitespace
@@ -354,21 +347,31 @@ sub _HashHTMLBlocks {
 	my $extract_block = gen_extract_tagged($open_tag, $close_tag, undef, { ignore => [$empty_tag] });
 
 	my @chunks;
-	while ($text =~ s{$up_to_possible_tag_block}{}) {
-		push @chunks, $1;
+	## TO-DO: the 0,3 on the next line ought to respect the
+	## tabwidth, or else, we should mandate 4-space tabwidth and
+	## be done with it:
+	while ($text =~ s{^(([ ]{0,3}<)?.*\n)}{}m) {
+		my $cur_line = $1;
+		if (defined $2) {
+			# current line could be start of code block
 
-		my $tag = $extract_block->($text);
-		if ($tag) {
-			my $key = md5_hex($tag);
-			$g_html_blocks{$key} = $tag;
-			push @chunks, "\n\n" . $key . "\n\n";
+			my ($tag, $remainder) = $extract_block->($cur_line . $text);
+			if ($tag) {
+				my $key = md5_hex($tag);
+				$g_html_blocks{$key} = $tag;
+				push @chunks, "\n\n" . $key . "\n\n";
+				$text = $remainder;
+			}
+			else {
+				# No tag match, so toss $cur_line into @chunks
+				push @chunks, $cur_line;
+			}
 		}
 		else {
-			$text =~ s{(.+\n)}{};	# I don't think this match can ever fail, because
-									# we can only get here if we're on a line that
-									# could start a tag block...
-			push @chunks, $1;		# ... thus we assume $1 is a sane value to push.
+			# current line could NOT be start of code block
+			push @chunks, $cur_line;
 		}
+
 	}
 	push @chunks, $text; # Whatever is left.
 
@@ -601,6 +604,7 @@ sub _DoAnchors {
 			  (['"])	# quote char = $5
 			  (.*?)		# Title = $6
 			  \5		# matching quote
+  		  	  [ \t]*	# ignore any spaces/tabs between closing quote and )
 			)?			# title is optional
 		  \)
 		)
@@ -1001,7 +1005,7 @@ sub _DoCodeBlocks {
 			$codeblock = _EncodeCode(_Outdent($codeblock));
 			$codeblock = _Detab($codeblock);
 			$codeblock =~ s/\A\n+//; # trim leading newlines
-			$codeblock =~ s/\s+\z//; # trim trailing whitespace
+			$codeblock =~ s/\n+\z//; # trim trailing newlines
 
 			$result = "\n\n<pre><code>" . $codeblock . "\n</code></pre>\n\n";
 
@@ -1398,7 +1402,8 @@ sub _TokenizeHTML {
         $pos = pos $str;
     }
     push @tokens, ['text', substr($str, $pos, $len - $pos)] if $pos < $len;
-    \@tokens;
+
+    return \@tokens;
 }
 
 
@@ -1509,6 +1514,29 @@ you expected; (3) the output Markdown actually produced.
 
 See the readme file for detailed release notes for this version.
 
+1.0.2b7
+
+	+	Changed shebang line from "/usr/bin/perl" to "/usr/bin/env perl"
+	
+	+	Now only trim trailing newlines from code blocks, instead of trimming
+		all trailing whitespace characters.
+
+
+1.0.2b6 - Mon 03 Apr 2006
+
+	+	Fixed bad performance bug in new `Text::Balanced`-based block-level parser.
+
+
+1.0.2b5 - Thu 08 Dec 2005
+
+	+	Fixed bug where this:
+	
+			[text](http://m.com "title" )
+			
+		wasn't working as expected, because the parser wasn't allowing for spaces
+		before the closing paren.
+
+
 1.0.2b4 - Thu 08 Sep 2005
 
 	+	Filthy hack to support markdown='1' in div tags, because I need it
@@ -1535,7 +1563,7 @@ See the readme file for detailed release notes for this version.
 		The regression was caused because in the fix, we moved
 		_EscapeSpecialCharsWithinTagAttributes() ahead of _DoCodeSpans()
 		in _RunSpanGamut(), but that's no good. We need to process code
-		spans first, other wise we can get tripped up by something like this:
+		spans first, otherwise we can get tripped up by something like this:
 
 			`<test a="` content of attribute `">`
 
