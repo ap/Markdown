@@ -1,0 +1,35 @@
+#!/bin/bash
+src=()
+
+set -e
+
+if [ -d .git ] ; then
+	git checkout --detach
+	git branch -D master
+	git checkout --orphan master
+	git rm --cached -rf .
+else
+	git init
+fi
+git commit --allow-empty -m 'root commit'
+
+export GIT_DIR=`pwd`/.git
+[ -d "$GIT_DIR" ]
+
+for f in "${src[@]}" ; do
+	mkdir tmp
+	pushd tmp > /dev/null
+	tar xf ../$f
+
+	d=${f%.*}
+	d=${d%.tar}
+	[ "`printf %s *`" = $d ] && cd $d
+
+	v=${d#Markdown_}
+	git add -A
+	git ci -m $v --date=`stat -f %Sm -t %FT%T Markdown.pl`" +0000" --author='John Gruber <markdown@daringfireball.net>'
+	git tag -a -m '' -f $v
+
+	popd > /dev/null
+	rm -rf tmp
+done
