@@ -1,5 +1,5 @@
 #!/bin/bash
-src=()
+src=( Markdown_1.0.zip Markdown_1.0.1.zip Markdown_1.0.2b4.tar.gz Markdown_1.0.2b7.tbz2 Markdown_1.0.2b8.tbz2 )
 
 set -e
 
